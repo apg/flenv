@@ -11,13 +11,28 @@ import (
 	"time"
 )
 
+// ErrNotStruct is an error
 var ErrNotStruct = errors.New("Attempted to decode into a value that was not a pointer to struct")
+
+// ErrNotStruct is an error
 var ErrUnsupportedFlagType = errors.New("Unsupported flag type")
 
+// DecodeArgs runs decode with os.Args
 func DecodeArgs(result interface{}) (*flag.FlagSet, error) {
 	return Decode(result, os.Args)
 }
 
+// Decode attempts to populate result, based on struct tags from args and the environment
+//
+// `result` should be a struct with at least one of the following tags
+//
+//    env:"ENVIRONMENT_VARIABLE"
+//    flag:"--environment-variable"
+//
+// Additionally, the following tags are also allowed
+//
+//    help:"help text for flag parsing"
+//    default:"default value"
 func Decode(result interface{}, args []string) (*flag.FlagSet, error) {
 	flagSet := flag.NewFlagSet("", flag.ContinueOnError)
 
