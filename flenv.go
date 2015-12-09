@@ -2,7 +2,7 @@ package flenv
 
 import (
 	"errors"
-	"log"
+	"flag"
 	"net/url"
 	"os"
 	"reflect"
@@ -12,18 +12,23 @@ import (
 )
 
 var ErrNotStruct = errors.New("Attempted to decode into a value that was not a pointer to struct")
+var ErrUnsupportedFlagType = errors.New("Unsupported flag type")
 
-func Decode(result interface{}) error {
-	//	flagSet := flag.NewFlagSet("", flag.ContinueOnError)
+func DecodeArgs(result interface{}) (*flag.FlagSet, error) {
+	return Decode(result, os.Args)
+}
+
+func Decode(result interface{}, args []string) (*flag.FlagSet, error) {
+	flagSet := flag.NewFlagSet("", flag.ContinueOnError)
 
 	val := reflect.ValueOf(result)
 	if val.Kind() != reflect.Ptr {
-		return ErrNotStruct
+		return nil, ErrNotStruct
 	}
 
 	st := val.Elem()
 	if st.Kind() != reflect.Struct {
-		return ErrNotStruct
+		return nil, ErrNotStruct
 	}
 
 	typ := val.Elem().Type()
@@ -32,55 +37,74 @@ func Decode(result interface{}) error {
 		field := st.Field(i)
 		typeField := typ.Field(i)
 
-		log.Printf("%+v\n", typ)
-
-		var defaultValue string
-
 		// Get env tag.
-		envName, envDef := decodeEnvTag(typeField.Tag.Get("env"))
-		if envDef != "" {
-			defaultValue = envDef
+		envName := typeField.Tag.Get("env")
+		defaultValue := typeField.Tag.Get("default")
+
+		// Set the value to the default value
+		if err := setValue(field, envName, defaultValue); err != nil {
+			return nil, err
 		}
 
-		log.Printf("Field=%s has default = %s, but will be populated from %s\n", typeField.Name, defaultValue, envName)
-		log.Printf("Field: %+v            TypeField: %+v\n", field, typeField)
-
-		if err := setValue(field, envName, envDef); err != nil {
-			return err
+		// If there's a flag associated, we need to set that up, possibly with a default.
+		flagNames := decodeFlagTag(typeField.Tag.Get("flag"))
+		flagHelp := typeField.Tag.Get("help")
+		if len(flagNames) > 0 {
+			addFlag(flagSet, field, flagNames, flagHelp)
 		}
-
-		/// TODO: Deal with flags.
-		// OK, now we *may* have a way to set the value for this
-		// field. But, even if we do, it may be overridden by a flag.
-		// flagNames := decodeFlagTag(typeField.Tag.Get("flag"))
-		// flagHelp := typeField.Tag.Get("help")
-
-		//  if len(flagNames) > 0 {
-		//	}
 	}
 
-	return nil
+	return flagSet, flagSet.Parse(args)
 }
 
-// Decodes the name given in tag.
-func decodeEnvTag(tag string) (name string, def string) {
-	idx := strings.Index(tag, ",")
-	if idx > 0 {
-		name = tag[0:idx]
+func decodeFlagTag(tag string) (names []string) {
+	bits := strings.Split(tag, ",")
+	out := make([]string, 0, len(bits))
+	for _, bit := range bits {
+		trimmed := strings.TrimLeft(bit, "-")
+		if len(trimmed) > 0 {
+			out = append(out, trimmed)
+		}
 	}
 
-	idx = strings.Index(tag, "default=")
-	if idx > 0 {
-		def = tag[idx+8:]
-	}
+	return out
+}
 
-	return
+func addFlag(flagSet *flag.FlagSet, field reflect.Value, names []string, help string) error {
+	for _, name := range names {
+		switch field.Kind() {
+		case reflect.Bool:
+			flagSet.BoolVar(field.Addr().Interface().(*bool), name, field.Bool(), help)
+		case reflect.Float32, reflect.Float64:
+			flagSet.Float64Var(field.Addr().Interface().(*float64), name, field.Float(), help)
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32:
+			flagSet.IntVar(field.Addr().Interface().(*int), name, int(field.Int()), help)
+		case reflect.Int64:
+			if t := field.Type(); t.PkgPath() == "time" && t.Name() == "Duration" {
+				flagSet.DurationVar(field.Addr().Interface().(*time.Duration), name, time.Duration(field.Int()), help)
+			} else {
+				flagSet.Int64Var(field.Addr().Interface().(*int64), name, field.Int(), help)
+			}
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			flagSet.Uint64Var(field.Addr().Interface().(*uint64), name, field.Uint(), help)
+		case reflect.String:
+			flagSet.StringVar(field.Addr().Interface().(*string), name, field.String(), help)
+		default:
+			// TODO: We can make a URL parser, but not right now.
+			return ErrUnsupportedFlagType
+		}
+	}
+	return nil
 }
 
 func setValue(field reflect.Value, name, def string) error {
 	tmp := os.Getenv(name)
 	if tmp == "" {
 		tmp = def
+	}
+
+	if tmp == "" {
+		return nil
 	}
 
 	switch field.Kind() {
