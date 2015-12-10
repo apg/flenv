@@ -130,7 +130,7 @@ func (s *OptionSet) Help() {
 
 	width := 78 // account for 2 leading
 
-	fmt.Println("Usage: ")
+	fmt.Println("Usage:\n")
 
 	for _, opt := range sortOptions(s.params) {
 		// Assemble flags
@@ -146,10 +146,26 @@ func (s *OptionSet) Help() {
 		}
 
 		// Assemble Help
+		helpText := opt.Help
+		if opt.Default != "" && opt.EnvVar != "" {
+			helpText += " (default $" + opt.EnvVar + " or " + opt.Default + ")"
+		} else if opt.Default != "" && opt.EnvVar == "" {
+			helpText += " (default " + opt.Default + ")"
+		} else {
+			helpText += " (default $" + opt.EnvVar + ")"
+		}
 
-		// Print it. This is wrong, as it cuts off help. Need to move to multiple lines for help.
-		fmtStr := fmt.Sprintf("  %%-%ds  %%%ds\n", maxParamSize, width-maxParamSize)
-		fmt.Printf(fmtStr, flags, opt.Help)
+		if len(helpText) > width-maxParamSize { // need word wrap.
+			fmtStr := fmt.Sprintf("  %%-%ds\n", maxParamSize)
+			fmt.Printf(fmtStr, flags)
+
+			for _, line := range fillText(helpText, width-10) {
+				fmt.Printf("          %s\n", line)
+			}
+		} else {
+			fmtStr := fmt.Sprintf("  %%-%ds  %%-%ds\n", maxParamSize, width-maxParamSize)
+			fmt.Printf(fmtStr, flags, opt.Help)
+		}
 	}
 }
 
@@ -278,4 +294,38 @@ func sortOptions(opts map[string]*Option) []*Option {
 		result[i] = opts[key]
 	}
 	return result
+}
+
+func fillText(txt string, column int) []string {
+	var lines []string
+
+	txt = strings.Replace(txt, "\r", " ", -1)
+	txt = strings.Replace(txt, "\n", " ", -1)
+
+	for len(txt) > 0 {
+		if len(txt) < column {
+			lines = append(lines, txt)
+			return lines
+		}
+
+		// Look from the left.
+		idx := strings.LastIndex(txt[0:column], " ")
+		if idx > 0 {
+			lines = append(lines, txt[0:idx])
+			txt = txt[idx+1:]
+			continue
+		}
+
+		// No space less than column, check after column for first space.
+		idx = strings.Index(txt, " ")
+		if idx > 0 {
+			lines = append(lines, txt[0:idx])
+			txt = txt[idx+1:]
+		} else {
+			// can't do any thing else, we found no space to break on.
+			lines = append(lines, txt)
+			return lines
+		}
+	}
+	return lines
 }

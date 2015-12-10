@@ -1,6 +1,10 @@
 package flenv
 
-import "testing"
+import (
+	"fmt"
+	"strings"
+	"testing"
+)
 
 func TestOptparseHappyWithDefaults(t *testing.T) {
 	var secure bool
@@ -176,4 +180,27 @@ func TestOptparsePositionalViaCancel(t *testing.T) {
 	if opts.positions[0] != "-s" {
 		t.Fatalf("Expected positional arguments to be '-s', got %+v", opts.positions)
 	}
+}
+
+func TestOptparseShowHelp(t *testing.T) {
+	var secure bool
+	var port int
+	var host string
+
+	opts := OptionSet{}
+	opts.Add(newBoolValue(&secure), 's', "secure", "false", "SECURE", "Is secure makes something very secure by default. This is long text that should be wordwrapped appropriately in help", false)
+
+	opts.Add(newIntValue(&port), 'p', "port", "80", "PORT", "Port to bind on", false)
+	opts.Add(newStringValue(&host), 'h', "host", "", "HOST", "Host to bind to", false)
+
+	opts.Help()
+}
+
+func TestOptparseFillText(t *testing.T) {
+	txt := `the quick brown fox`
+
+	fmt.Println(strings.Join(fillText(txt, 10), "\n"))
+
+	fmt.Println(strings.Join(fillText(txt, 70), "\n"))
+
 }
