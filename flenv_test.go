@@ -42,6 +42,9 @@ func TestFlenvDecodeArgs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Unexpected error, got %q", err)
 	}
+	if fs == nil {
+		t.Fatalf("Flag set was nil")
+	}
 	if cfg.Host != "sigusr2.net" {
 		t.Fatalf("Expected host to be \"sigusr2.net\", got %q", cfg.Host)
 	}
